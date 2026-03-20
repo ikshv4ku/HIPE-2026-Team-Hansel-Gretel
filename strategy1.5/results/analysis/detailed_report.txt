@@ -1,0 +1,35 @@
+STRATEGY 1.5 — DETAILED EVALUATION REPORT
+============================================================
+
+`at` Relation:
+              precision    recall  f1-score   support
+
+       FALSE     0.8224    0.6793    0.7440       184
+    PROBABLE     0.2632    0.4545    0.3333        33
+        TRUE     0.4674    0.5119    0.4886        84
+
+    accuracy                         0.6080       301
+   macro avg     0.5176    0.5486    0.5220       301
+weighted avg     0.6620    0.6080    0.6277       301
+
+Macro Recall (`at`): 0.5486
+
+`isAt` Relation:
+              precision    recall  f1-score   support
+
+       FALSE     0.9140    0.7984    0.8523       253
+        TRUE     0.3625    0.6042    0.4531        48
+
+    accuracy                         0.7674       301
+   macro avg     0.6383    0.7013    0.6527       301
+weighted avg     0.8261    0.7674    0.7887       301
+
+Macro Recall (`isAt`): 0.7013
+
+Global Macro Recall: 0.6249
+vs. Strategy 1     : 0.6018  (Δ = +0.0231)
+
+Per-Language Breakdown:
+  DE: at=0.5819, isAt=0.6558
+  EN: at=0.2965, isAt=0.5398
+  FR: at=0.6327, isAt=0.8688

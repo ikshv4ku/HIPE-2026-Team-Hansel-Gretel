@@ -67,9 +67,15 @@ def build_split(gold_dir, silver_dir, output_dir, train_ratio=0.8, gold_weight=5
 
 if __name__ == "__main__":
     import argparse
+    # Default paths relative to repo root assuming script is in strategy1.5/scripts/
+    default_base = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+    
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gold_dir", type=str, default="/home/pradyuman/IITR/sem6/lbp/model/HIPE-2026-Team-Hansel-Gretel/HIPE-2026-data/data/newspapers/v1.0")
-    parser.add_argument("--silver_dir", type=str, default="/home/pradyuman/IITR/sem6/lbp/model/HIPE-2026-Team-Hansel-Gretel/HIPE-2026-data/data/sandbox")
-    parser.add_argument("--out_dir", type=str, default="/home/pradyuman/IITR/sem6/lbp/model/HIPE-2026-Team-Hansel-Gretel/HIPE-2026-data/data/newspapers/v1.0/splits")
+    parser.add_argument("--gold_dir", type=str, 
+                        default=os.path.join(default_base, "HIPE-2026-data/data/newspapers/v1.0"))
+    parser.add_argument("--silver_dir", type=str, 
+                        default=os.path.join(default_base, "HIPE-2026-data/data/sandbox"))
+    parser.add_argument("--out_dir", type=str, 
+                        default=os.path.join(default_base, "HIPE-2026-data/data/newspapers/v1.0/splits"))
     args = parser.parse_args()
     build_split(args.gold_dir, args.silver_dir, args.out_dir)

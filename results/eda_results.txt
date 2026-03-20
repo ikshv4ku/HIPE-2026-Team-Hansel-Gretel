@@ -1,0 +1,20 @@
+Total Documents: 104
+Languages: {'de': 34, 'en': 35, 'fr': 35}
+Average Document Length: 3464.93 characters
+Max Document Length: 11738 characters
+(some of these texts can be quite long, which means a standard LLM or transformer with a 512-token limit might need chunking or a larger context window)
+
+Min Document Length: 418 characters
+Total Candidate Pairs: 1251
+Unique Persons: 496
+Unique Locations: 469
+'at' Label Distribution: {'TRUE': 441, 'FALSE': 690, 'PROBABLE': 120}
+'isAt' Label Distribution: {'FALSE': 972, 'TRUE': 279}
+
+
+
+
+Takeaways for Modeling
+1. Context Length: Since the max document length is nearly 12,000 characters, we either need a model with a large context window (e.g., modern LLMs like Gemini, Claude, or GPT-4, or long-context embeddings like Longformer) or we need a strategy to extract only the sentences containing the candidate entity mentions.
+Class Imbalance: The isAt label is especially skewed towards FALSE. We might need to consider techniques like focal loss, class weighting, or carefully designed prompts if using an LLM.
+Multilingual: We will need a multilingual approach (like xlm-roberta for classification, or a multilingual LLM) since the data spans English, French, and German evenly.

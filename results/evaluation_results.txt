@@ -1,0 +1,14 @@
+Evaluation Results for dummy prediction (generated via scripts/dummy_predict.py):
+-------------------------------------------------------------------------------
+  'at': macro_recall=0.3211, accuracy=0.3283 (153/466)
+  'isAt': macro_recall=0.5273, accuracy=0.5129 (239/466)
+  'global': macro_recall=0.4242 (392/932)
+
+
+Evaluation Results for dropout prediction (simulating missing entity pairs/documents):
+--------------------------------------------------------------------------------------
+Summary: Imputed 1 missing document(s) and 100 missing sampled_pair(s) with default FALSE predictions.
+
+  'at': macro_recall=0.3348, accuracy=0.3927 (183/466)
+  'isAt': macro_recall=0.4987, accuracy=0.5708 (266/466)
+  'global': macro_recall=0.4167 (449/932)

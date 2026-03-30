@@ -2,3 +2,5 @@ HIPE-2026-data/
 venv/
 __pycache__/
 *.pyc
+*.pt
+*.pt

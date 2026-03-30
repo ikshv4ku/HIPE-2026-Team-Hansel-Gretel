@@ -1,0 +1,22 @@
+=== STRATEGY 2: FINE-TUNED MTL REPORT ===
+
+AT RELATION:
+              precision    recall  f1-score   support
+
+       FALSE       0.00      0.00      0.00       137
+    PROBABLE       0.00      0.00      0.00        34
+        TRUE       0.33      1.00      0.49        83
+
+    accuracy                           0.33       254
+   macro avg       0.11      0.33      0.16       254
+weighted avg       0.11      0.33      0.16       254
+
+IS_AT RELATION:
+              precision    recall  f1-score   support
+
+       FALSE       0.82      1.00      0.90       209
+        TRUE       0.00      0.00      0.00        45
+
+    accuracy                           0.82       254
+   macro avg       0.41      0.50      0.45       254
+weighted avg       0.68      0.82      0.74       254

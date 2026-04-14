@@ -29,7 +29,7 @@ def analyze(gold_file, pred_file):
     report_isAt = classification_report(gold_isAt, pred_isAt, output_dict=True)
     
     with open("strategy3/results/analysis/detailed_report.txt", "w") as f:
-        f.write("=== STRATEGY 2.5: PEFT MTL REPORT ===\n\n")
+        f.write("=== STRATEGY 3: MONOLINGUAL PEFT ROUTING REPORT ===\n\n")
         f.write("AT RELATION:\n")
         f.write(classification_report(gold_at, pred_at))
         f.write("\nIS_AT RELATION:\n")
@@ -52,23 +52,22 @@ def analyze(gold_file, pred_file):
     plt.savefig("strategy3/results/analysis/confusion_matrices.png")
     
     # 3. Bar Chart Comparison
-    # Strategy 1.5 baseline results
-    s15_macro = 0.6249
-    s2_macro = (report_at['macro avg']['recall'] + report_isAt['macro avg']['recall']) / 2
+    # Strategy 1.5, 2, and 2.5 baseline results
+    s3_macro = (report_at['macro avg']['recall'] + report_isAt['macro avg']['recall']) / 2
     
     plt.figure(figsize=(10, 6))
-    strategies = ['Strategy 1.5 (Frozen)', 'Strategy 2 (End-to-End)', 'Strategy 2.5 (PEFT/LoRA)']
-    recalls = [0.6249, 0.4167, s2_macro]
+    strategies = ['S 1.5 (Frozen)', 'S 2 (E2E)', 'S 2.5 (PEFT)', 'S 3 (Routed)']
+    recalls = [0.6249, 0.4167, 0.4550, s3_macro]
     sns.barplot(x=strategies, y=recalls, hue=strategies, palette='viridis', legend=False)
     plt.ylim(0.3, 0.8)
     plt.ylabel("Global Macro Recall")
     plt.title("Evolution of Model Performance")
     for i, v in enumerate(recalls):
         plt.text(i, v + 0.005, f"{v:.4f}", ha='center', fontweight='bold')
-    plt.savefig("strategy2.5/results/analysis/strategy_comparison.png")
+    plt.savefig("strategy3/results/analysis/strategy_comparison.png")
 
-    print(f"Strategy 2.5 Global Macro Recall: {s2_macro:.4f} (vs Strategy 1.5: 0.6249)")
+    print(f"Strategy 3 Global Macro Recall: {s3_macro:.4f} (vs Strategy 2.5: 0.4550)")
 
 if __name__ == "__main__":
     analyze("HIPE-2026-data/data/newspapers/v1.0/splits/HIPE-2026-v1.0-impresso-dev-all.jsonl", 
-            "strategy2.5/results/predictions/preds-dev-all.jsonl")
+            "strategy3/results/predictions/preds-dev-all.jsonl")

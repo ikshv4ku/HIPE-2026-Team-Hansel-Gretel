@@ -5,3 +5,11 @@ __pycache__/
 *.pt
 *.pt
 .venv/
+*.safetensors
+*.bin
+offload/
+=0.46.1
+strategy*/data/*.jsonl
+strategy*/training_*.log
+strategy*/arbiter_gen*.log
+__pycache__/

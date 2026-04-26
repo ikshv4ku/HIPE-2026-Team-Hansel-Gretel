@@ -1,0 +1,35 @@
+
+===========================================
+ Strategy 6: Multi-Agent Pipeline (Phase 1)
+===========================================
+[1/2] Running multi-agent inference (Historian → Geographer → Arbiter)...
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+`torch_dtype` is deprecated! Use `dtype` instead!
+[Strategy 6] Device: cuda
+[S6] Loading tokenizer from strategy5/results/models/best_lora_adapter ...
+[S6] Loading base model: Qwen/Qwen2.5-3B-Instruct ...
+Loading weights:   0%|          | 0/434 [00:00<?, ?it/s]Loading weights: 100%|██████████| 434/434 [00:00<00:00, 8268.88it/s]
+[S6] Applying LoRA adapter from strategy5/results/models/best_lora_adapter ...
+[S6] Model ready.
+[S6] Documents:   0%|          | 0/21 [00:00<?, ?it/s]The following generation flags are not valid and may be ignored: ['temperature', 'top_p', 'top_k']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[S6] Documents:   5%|▍         | 1/21 [00:53<17:49, 53.50s/it][S6] Documents:  10%|▉         | 2/21 [02:23<23:46, 75.09s/it][S6] Documents:  14%|█▍        | 3/21 [03:56<24:55, 83.08s/it][S6] Documents:  19%|█▉        | 4/21 [04:13<16:07, 56.93s/it][S6] Documents:  24%|██▍       | 5/21 [04:55<13:48, 51.77s/it][S6] Documents:  29%|██▊       | 6/21 [05:53<13:24, 53.66s/it][S6] Documents:  33%|███▎      | 7/21 [07:18<14:56, 64.00s/it][S6] Documents:  38%|███▊      | 8/21 [07:34<10:32, 48.67s/it][S6] Documents:  43%|████▎     | 9/21 [09:02<12:14, 61.19s/it][S6] Documents:  48%|████▊     | 10/21 [09:07<08:01, 43.78s/it][S6] Documents:  52%|█████▏    | 11/21 [09:15<05:26, 32.66s/it][S6] Documents:  57%|█████▋    | 12/21 [10:43<07:26, 49.62s/it][S6] Documents:  62%|██████▏   | 13/21 [11:54<07:27, 55.99s/it][S6] Documents:  67%|██████▋   | 14/21 [13:12<07:18, 62.66s/it][S6] Documents:  71%|███████▏  | 15/21 [14:38<06:57, 69.61s/it][S6] Documents:  76%|███████▌  | 16/21 [16:07<06:18, 75.68s/it][S6] Documents:  81%|████████  | 17/21 [17:32<05:14, 78.52s/it][S6] Documents:  86%|████████▌ | 18/21 [18:06<03:15, 65.01s/it][S6] Documents:  90%|█████████ | 19/21 [19:14<02:12, 66.04s/it][S6] Documents:  95%|█████████▌| 20/21 [20:47<01:13, 73.95s/it][S6] Documents: 100%|██████████| 21/21 [21:54<00:00, 72.00s/it][S6] Documents: 100%|██████████| 21/21 [21:54<00:00, 62.61s/it]
+
+[S6] Predictions written to strategy6/results/predictions/preds-dev-all.jsonl
+[S6] Agent agreement stats: {'hist_TRUE': 0, 'geo_TRUE': 0, 'agree': 246, 'disagree': 8}
+[2/2] Scoring with official HIPE-2026 scorer...
+
+[Strategy 6] Running scorer:
+  /home/pradyuman/HIPE-2026-Team-Hansel-Gretel/.venv/bin/python3 /home/pradyuman/HIPE-2026-Team-Hansel-Gretel/HIPE-2026-data/scripts/file_scorer_evaluation.py --schema_file /home/pradyuman/HIPE-2026-Team-Hansel-Gretel/HIPE-2026-data/schemas/hipe-2026-data.schema.json --gold_data_file /home/pradyuman/HIPE-2026-Team-Hansel-Gretel/HIPE-2026-data/data/newspapers/v1.0/splits/HIPE-2026-v1.0-impresso-dev-str4-all.jsonl --predictions_file /home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy6/results/predictions/preds-dev-all.jsonl
+
+
+Evaluation Results for preds-dev-all.jsonl:
+  'at': macro_recall=0.6219, accuracy=0.6969 (177/254)
+  'isAt': macro_recall=0.7340, accuracy=0.8780 (223/254)
+  'global': macro_recall=0.6780 (400/508)
+
+
+Results written to /home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy6/results/analysis/evaluation_results.txt
+
+===========================================
+ Strategy 6 execution finished!
+===========================================

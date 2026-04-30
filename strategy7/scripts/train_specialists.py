@@ -37,7 +37,7 @@ TRUE_LOSS_WEIGHT = 3.0
 # ── Dataset ──────────────────────────────────────────────────────────────────
 
 class SpecialistDataset(Dataset):
-    def __init__(self, jsonl_file, tokenizer, system_prompt, max_length=1024):
+    def __init__(self, jsonl_file, tokenizer, system_prompt, max_length=2048):
         self.tokenizer     = tokenizer
         self.max_length    = max_length
         self.system_prompt = system_prompt

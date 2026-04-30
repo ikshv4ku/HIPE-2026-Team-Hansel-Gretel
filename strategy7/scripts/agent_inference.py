@@ -192,7 +192,7 @@ def parse_arbiter_output(text: str):
 def generate(model, tokenizer, prompt: str, max_new_tokens: int = 120) -> str:
     first_device = next(model.parameters()).device
     enc = tokenizer(
-        prompt, return_tensors="pt", truncation=True, max_length=1024
+        prompt, return_tensors="pt", truncation=True, max_length=2048
     ).to(first_device)
     with torch.no_grad():
         out = model.generate(

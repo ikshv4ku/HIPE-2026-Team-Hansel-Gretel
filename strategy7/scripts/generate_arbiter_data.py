@@ -24,7 +24,7 @@ OUT_DIR    = "strategy7/data"
 
 def generate(model, tokenizer, prompt, device, max_new_tokens=120):
     enc = tokenizer(
-        prompt, return_tensors="pt", truncation=True, max_length=960
+        prompt, return_tensors="pt", truncation=True, max_length=2048
     ).to(device)
     with torch.no_grad():
         out = model.generate(

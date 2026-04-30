@@ -1,0 +1,6 @@
+
+Evaluation Results for preds-dev-7.jsonl:
+  'at': macro_recall=0.6742, accuracy=0.6929 (176/254)
+  'isAt': macro_recall=0.7817, accuracy=0.9134 (232/254)
+  'global': macro_recall=0.7280 (408/508)
+

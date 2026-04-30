@@ -1,4 +1,4 @@
-#!/bin/bash
+ #!/bin/bash
 # =============================================================================
 # Strategy 7: Specialist Fine-Tuning Orchestration
 # Runs Historian and Geographer training IN PARALLEL on separate GPUs,

@@ -7,7 +7,7 @@
 
 ## What This Strategy Does
 
-This is an upgraded version of Strategy 8. It attacks the HIPE-2026 relation-extraction task **without any model training** using **Chain-of-Thought (CoT) Few-Shot Prompting** through IBM's RITS inference gateway (e.g. Llama 3.3 70B).
+This is an upgraded version of Strategy 8. It attacks the HIPE-2026 relation-extraction task **without any model training** using **Chain-of-Thought (CoT) Few-Shot Prompting** through IBM's RITS inference gateway (e.g. GPT-OSS 120B).
 
 ### The Upgrade: Wikidata Knowledge Injection
 Unlike Strategy 8, Strategy 9 dynamically queries the Wikidata SPARQL endpoint during inference. For every pair, it fetches:
@@ -63,12 +63,12 @@ echo "RITS_API_KEY=your_actual_rits_api_key" > .env
 
 ### Step 5 — Run the 4 Official Inference Commands
 
-Execute the following four commands. They will query the Llama 70B model via RITS, inject the Wikidata facts, and output the exact files we need for the official submission.
+Execute the following four commands. They will query the GPT-OSS 120B model via RITS, inject the Wikidata facts, and output the exact files we need for the official submission.
 
 **Command 1 (German Test Set):**
 ```bash
 python strategy9/hipe_inference.py \
-  -model llama70b \
+  -model gpt \
   -input_file HIPE-2026-data/official_test_unlabeled/HIPE-2026-v1.0-impresso-test-de.jsonl \
   > Hansel\&Gretel_HIPE-2026-v1.0-impresso-test-de_run3.jsonl
 ```
@@ -76,7 +76,7 @@ python strategy9/hipe_inference.py \
 **Command 2 (English Test Set):**
 ```bash
 python strategy9/hipe_inference.py \
-  -model llama70b \
+  -model gpt \
   -input_file HIPE-2026-data/official_test_unlabeled/HIPE-2026-v1.0-impresso-test-en.jsonl \
   > Hansel\&Gretel_HIPE-2026-v1.0-impresso-test-en_run3.jsonl
 ```
@@ -84,7 +84,7 @@ python strategy9/hipe_inference.py \
 **Command 3 (French Test Set):**
 ```bash
 python strategy9/hipe_inference.py \
-  -model llama70b \
+  -model gpt \
   -input_file HIPE-2026-data/official_test_unlabeled/HIPE-2026-v1.0-impresso-test-fr.jsonl \
   > Hansel\&Gretel_HIPE-2026-v1.0-impresso-test-fr_run3.jsonl
 ```
@@ -92,7 +92,7 @@ python strategy9/hipe_inference.py \
 **Command 4 (French Surprise Literary Set):**
 ```bash
 python strategy9/hipe_inference.py \
-  -model llama70b \
+  -model gpt \
   -input_file HIPE-2026-data/official_test_unlabeled/HIPE-2026-v1.0-surprise-test-fr.jsonl \
   > Hansel\&Gretel_HIPE-2026-v1.0-surprise-test-fr_run3.jsonl
 ```

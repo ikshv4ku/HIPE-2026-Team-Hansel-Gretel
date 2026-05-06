@@ -547,7 +547,7 @@ def main():
     )
     parser.add_argument(
         "-model", "--model",
-        default="llama70b",
+        default="gpt",
         choices=["llama70b", "granite", "llama4", "gpt"],
         help="RITS model to use as backbone",
     )

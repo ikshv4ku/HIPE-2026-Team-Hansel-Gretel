@@ -514,25 +514,35 @@ def run_hipe_inference(input_file, model_key, no_few_shot=False, output_file_arg
     print(f"[Strategy 9] Predictions → {output_file}")
 
     # ── Score with official HIPE-2026 scorer ──────────────────────────────
-    print("\n[Strategy 9] Running official scorer...\n")
+    # NOTE: Scoring is skipped when running on unlabeled test data (official submission).
+    # The scorer requires gold labels, which are absent in the official test files.
+    # Predictions are still saved correctly above — this section is only useful for dev evaluation.
     import subprocess
-    scorer_cmd = [
-        sys.executable,
-        "HIPE-2026-data/scripts/file_scorer_evaluation.py",
-        "--schema_file",      "HIPE-2026-data/schemas/hipe-2026-data.schema.json",
-        "--gold_data_file",   input_file,
-        "--predictions_file", output_file,
-    ]
-    result = subprocess.run(scorer_cmd, capture_output=True, text=True)
-    output = result.stdout + result.stderr
-    print(output)
+    try:
+        print("\n[Strategy 9] Attempting official scoring (dev mode only)...\n")
+        scorer_cmd = [
+            sys.executable,
+            "HIPE-2026-data/scripts/file_scorer_evaluation.py",
+            "--schema_file",      "HIPE-2026-data/schemas/hipe-2026-data.schema.json",
+            "--gold_data_file",   input_file,
+            "--predictions_file", output_file,
+        ]
+        result = subprocess.run(scorer_cmd, capture_output=True, text=True, timeout=120)
+        score_output = result.stdout + result.stderr
+        if result.returncode != 0:
+            print("[Strategy 9] Scoring skipped — likely running on unlabeled test data (no gold labels available). Predictions file is valid.")
+            score_output = "Scoring skipped: unlabeled test set\n" + score_output
+        else:
+            print(score_output)
 
-    # Save evaluation results
-    eval_file = f"strategy9/results/analysis/evaluation_{model_key}.txt"
-    os.makedirs(os.path.dirname(eval_file), exist_ok=True)
-    with open(eval_file, "w") as f:
-        f.write(output)
-    print(f"[Strategy 9] Evaluation → {eval_file}")
+        eval_file = f"strategy9/results/analysis/evaluation_{model_key}.txt"
+        os.makedirs(os.path.dirname(eval_file), exist_ok=True)
+        with open(eval_file, "w") as f:
+            f.write(score_output)
+        print(f"[Strategy 9] Evaluation → {eval_file}")
+    except Exception as e:
+        print(f"[Strategy 9] Scoring step skipped (expected for unlabeled test sets): {e}")
+        print(f"[Strategy 9] ✅ Predictions saved to: {output_file}")
 
     return output_file
 

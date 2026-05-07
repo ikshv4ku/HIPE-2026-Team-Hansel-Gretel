@@ -401,7 +401,7 @@ MODEL_ENDPOINT_OVERRIDES = {
 }
 
 
-def run_hipe_inference(input_file, model_key, no_few_shot=False):
+def run_hipe_inference(input_file, model_key, no_few_shot=False, output_file_arg=None):
     """
     Run HIPE-2026 relation extraction on the input JSONL file using
     a RITS-hosted LLM as the backbone.
@@ -453,7 +453,10 @@ def run_hipe_inference(input_file, model_key, no_few_shot=False):
     print(f"[Strategy 8] Loaded {len(docs)} documents, {total_pairs} pairs\n")
 
     # ── Run inference ────────────────────────────────────────────────────
-    output_file = f"strategy9/results/predictions/preds-dev-9-{model_key}.jsonl"
+    if output_file_arg:
+        output_file = output_file_arg
+    else:
+        output_file = f"strategy9/results/predictions/preds-dev-9-{model_key}.jsonl"
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     processed = 0
@@ -546,10 +549,22 @@ def main():
         help="Path to input JSONL file (HIPE-2026 dev or test set)",
     )
     parser.add_argument(
+        "-output_file", "--output_file",
+        type=str,
+        default=None,
+        help="Optional path to output JSONL file",
+    )
+    parser.add_argument(
         "-model", "--model",
         default="gpt",
         choices=["llama70b", "granite", "llama4", "gpt"],
         help="RITS model to use as backbone",
+    )
+    parser.add_argument(
+        "-output_file", "--output_file",
+        type=str,
+        default=None,
+        help="Explicit output path for the predictions JSONL file",
     )
     parser.add_argument(
         "-no_few_shot", "--no_few_shot",
@@ -563,6 +578,7 @@ def main():
         input_file=args.input_file,
         model_key=args.model,
         no_few_shot=args.no_few_shot,
+        output_file_arg=args.output_file,
     )
 
 

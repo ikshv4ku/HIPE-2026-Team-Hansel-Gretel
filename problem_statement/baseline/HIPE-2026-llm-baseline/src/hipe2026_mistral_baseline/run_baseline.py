@@ -1,0 +1,597 @@
+"""CLI entrypoint for the HIPE 2026 local prompt baseline."""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime
+import json
+from dataclasses import asdict, dataclass
+import logging
+import os
+from pathlib import Path
+import math
+import sys
+
+from .export import (
+    append_debug_jsonl_record,
+    initialize_debug_jsonl,
+    write_submission_jsonl,
+)
+from .inference import (
+    DEFAULT_MODEL_NAME,
+    GenerationConfig,
+    GenerationResult,
+    LlamaCppRunner,
+    resolve_model_path,
+)
+from .io_hipe import HipeDocument, load_jsonl
+from .pair_generation import build_pair_tasks
+from .pair_generation import PairTask
+from .parsing import ParseError, parse_model_response
+from .prompting import build_prompt, load_prompt_template
+from .validation import (
+    apply_prediction_to_pair,
+    conservative_default_prediction,
+    validate_prediction,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+LOGGER = logging.getLogger(__name__)
+ENABLE_INLINE_PAIR_PROGRESS = True
+
+
+@dataclass(frozen=True)
+class TraceRecord:
+    document_id: str
+    pers_entity_id: str
+    loc_entity_id: str
+    prompt: str
+    raw_output: str
+    at: str
+    at_explanation: str | None
+    is_at: str
+    is_at_explanation: str | None
+    used_default: bool
+    error: str | None
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    elapsed_seconds: float | None
+    input_tokens_per_second: float | None
+    output_tokens_per_second: float | None
+
+    def to_dict(self) -> dict[str, object]:
+        total_tokens = None
+        if self.prompt_tokens is not None and self.completion_tokens is not None:
+            total_tokens = self.prompt_tokens + self.completion_tokens
+        return {
+            "document_id": self.document_id,
+            "pers_entity_id": self.pers_entity_id,
+            "loc_entity_id": self.loc_entity_id,
+            "prompt": self.prompt,
+            "raw_output": self.raw_output,
+            "at": self.at,
+            "at_explanation": self.at_explanation,
+            "isAt": self.is_at,
+            "isAt_explanation": self.is_at_explanation,
+            "used_default": self.used_default,
+            "error": self.error,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": total_tokens,
+            "elapsed_seconds": self.elapsed_seconds,
+            "input_tokens_per_second": self.input_tokens_per_second,
+            "output_tokens_per_second": self.output_tokens_per_second,
+        }
+
+
+def predict_pair(
+    task: PairTask,
+    *,
+    runner,
+    prompt_template: str,
+) -> tuple[object, dict[str, object]]:
+    """Predict one sampled pair.
+
+    This is the main function to edit if you want to experiment with:
+    - alternate prompts
+    - separate prompts for `at` and `isAt`
+    - repair steps after JSON parsing failure
+    - retrieval or sentence filtering before prompting
+    """
+
+    prompt = build_prompt(task, prompt_template)
+    generation_result = runner.generate(prompt)
+    if isinstance(generation_result, GenerationResult):
+        raw_output = generation_result.text
+        prompt_tokens = generation_result.prompt_tokens
+        completion_tokens = generation_result.completion_tokens
+        elapsed_seconds = generation_result.elapsed_seconds
+        input_tokens_per_second = generation_result.input_tokens_per_second
+        output_tokens_per_second = generation_result.output_tokens_per_second
+    else:
+        raw_output = str(generation_result)
+        prompt_tokens = None
+        completion_tokens = None
+        elapsed_seconds = None
+        input_tokens_per_second = None
+        output_tokens_per_second = None
+    used_default = False
+    error: str | None = None
+    try:
+        parsed = parse_model_response(raw_output)
+        validated = validate_prediction(task, parsed)
+    except (ParseError, ValueError) as exc:
+        used_default = True
+        error = str(exc)
+        validated = conservative_default_prediction(str(exc))
+
+    updated_pair = apply_prediction_to_pair(task.pair, validated)
+    trace_record = TraceRecord(
+        document_id=task.document_id,
+        pers_entity_id=task.pair.pers_entity_id,
+        loc_entity_id=task.pair.loc_entity_id,
+        prompt=prompt,
+        raw_output=raw_output,
+        at=validated.at,
+        at_explanation=validated.at_explanation,
+        is_at=validated.is_at,
+        is_at_explanation=validated.is_at_explanation,
+        used_default=used_default,
+        error=error,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        elapsed_seconds=elapsed_seconds,
+        input_tokens_per_second=input_tokens_per_second,
+        output_tokens_per_second=output_tokens_per_second,
+    ).to_dict()
+    return updated_pair, trace_record
+
+
+def run_documents(
+    documents: list[HipeDocument],
+    *,
+    runner,
+    prompt_template: str,
+    debug_jsonl: str | Path | None = None,
+) -> tuple[list[HipeDocument], list[dict[str, object]]]:
+    """Run the full baseline over a list of documents.
+
+    The structure is intentionally plain:
+    1. iterate over documents
+    2. iterate over sampled pairs
+    3. predict one pair
+    4. rebuild the document with predicted labels
+    """
+
+    output_documents: list[HipeDocument] = []
+    trace_records: list[dict[str, object]] = []
+    total_documents = len(documents)
+
+    for index, document in enumerate(documents, start=1):
+        tasks = build_pair_tasks(document)
+        total_pairs = len(tasks)
+        predicted_pairs = []
+        if total_pairs == 0:
+            _emit_pair_progress(
+                document_index=index,
+                total_documents=total_documents,
+                document_id=document.document_id,
+                document_char_count=len(document.text),
+                pair_index=0,
+                total_pairs=0,
+                input_tokens_per_second=None,
+                output_tokens_per_second=None,
+                final=True,
+            )
+
+        for pair_index, task in enumerate(tasks, start=1):
+            predicted_pair, trace_record = predict_pair(
+                task,
+                runner=runner,
+                prompt_template=prompt_template,
+            )
+            predicted_pairs.append(predicted_pair)
+            trace_records.append(trace_record)
+            if debug_jsonl is not None:
+                append_debug_jsonl_record(trace_record, debug_jsonl)
+            _emit_pair_progress(
+                document_index=index,
+                total_documents=total_documents,
+                document_id=document.document_id,
+                document_char_count=len(document.text),
+                pair_index=pair_index,
+                total_pairs=total_pairs,
+                input_tokens_per_second=trace_record.get("input_tokens_per_second"),
+                output_tokens_per_second=trace_record.get("output_tokens_per_second"),
+                final=pair_index == total_pairs,
+            )
+
+        output_documents.append(
+            HipeDocument(
+                document_id=document.document_id,
+                media=document.media,
+                source=document.source,
+                date=document.date,
+                language=document.language,
+                text=document.text,
+                sampled_pairs=predicted_pairs,
+            )
+        )
+
+    return output_documents, trace_records
+
+
+def load_run_config(path: str | None) -> dict[str, object]:
+    """Load a small optional JSON config for model and decoding defaults."""
+
+    if not path:
+        return {}
+
+    config_path = Path(path).expanduser().resolve()
+    with config_path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        raise ValueError("Config file must contain a JSON object")
+
+    resolved: dict[str, object] = {}
+    for key, value in payload.items():
+        if key in {"model_path", "prompt_file", "cache_dir"} and isinstance(value, str):
+            resolved[key] = str((config_path.parent.parent / value).resolve())
+        else:
+            resolved[key] = value
+    return resolved
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run a local prompt baseline for HIPE 2026 sampled_pairs."
+    )
+    parser.add_argument(
+        "--config",
+        help="Optional JSON config file for model, prompt, and decoding defaults.",
+    )
+    parser.add_argument("--input-jsonl", required=True, help="Input HIPE JSONL file.")
+    parser.add_argument("--output-jsonl", required=True, help="Prediction JSONL file.")
+    parser.add_argument(
+        "--debug-jsonl",
+        help="Optional debug JSONL file with prompts, raw outputs, and fallbacks.",
+    )
+    parser.add_argument(
+        "--run-config-json",
+        help="Optional JSON file recording the effective run configuration.",
+    )
+    parser.add_argument("--prompt-file", default=None, help="Override the prompt template file.")
+    parser.add_argument("--model-path", default=None, help="Local GGUF model path.")
+    parser.add_argument("--hf-repo", default=None, help="Hugging Face repo containing a GGUF file.")
+    parser.add_argument("--hf-filename", default=None, help="GGUF filename in the Hugging Face repo.")
+    parser.add_argument("--cache-dir", default=None, help="Optional Hugging Face cache directory.")
+    parser.add_argument("--max-docs", type=int, help="Limit documents for quick runs.")
+    parser.add_argument("--temperature", type=float, default=None)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--max-tokens", type=int, default=None)
+    parser.add_argument("--top-p", type=float, default=None)
+    parser.add_argument("--top-k", type=int, default=None)
+    parser.add_argument("--repeat-penalty", type=float, default=None)
+    parser.add_argument("--n-ctx", type=int, default=None)
+    parser.add_argument("--n-gpu-layers", type=int, default=None)
+    parser.add_argument(
+        "--flash-attn",
+        dest="flash_attn",
+        action="store_true",
+        default=None,
+        help="Enable flash attention in llama.cpp.",
+    )
+    parser.add_argument(
+        "--no-flash-attn",
+        dest="flash_attn",
+        action="store_false",
+        help="Disable flash attention in llama.cpp.",
+    )
+    parser.add_argument(
+        "--model-name",
+        default=None,
+        help="Metadata only. Used for documentation and reproducibility logs.",
+    )
+    return parser
+
+
+def _setting(
+    args: argparse.Namespace,
+    config: dict[str, object],
+    name: str,
+    default: object | None = None,
+):
+    value = getattr(args, name)
+    if value is not None:
+        return value
+    if name in config:
+        return config[name]
+    return default
+
+
+def _optional_int_setting(
+    args: argparse.Namespace,
+    config: dict[str, object],
+    name: str,
+) -> int | None:
+    value = _setting(args, config, name, None)
+    if value is None:
+        return None
+    return int(value)
+
+
+def _decode_mode_label(temperature: float) -> str:
+    if temperature == 0.0:
+        return "greedy"
+    return "sampling"
+
+
+def _emit_pair_progress(
+    *,
+    document_index: int,
+    total_documents: int,
+    document_id: str,
+    document_char_count: int,
+    pair_index: int,
+    total_pairs: int,
+    input_tokens_per_second: float | None,
+    output_tokens_per_second: float | None,
+    final: bool,
+) -> None:
+    if not ENABLE_INLINE_PAIR_PROGRESS:
+        return
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    message = (
+        f"{timestamp} Document {document_index}/{total_documents}: {document_id} "
+        f"{document_char_count} chars ({pair_index}/{total_pairs} pairs"
+    )
+    if input_tokens_per_second is not None:
+        message += f", {input_tokens_per_second:.1f} in tok/s"
+    if output_tokens_per_second is not None:
+        message += f", {output_tokens_per_second:.1f} out tok/s"
+    message += ")"
+    if final:
+        sys.stderr.write(f"\r{message}\n")
+    else:
+        sys.stderr.write(f"\r{message}")
+    sys.stderr.flush()
+
+
+def _nearest_rank_percentile(values: list[int], percentile: float) -> int:
+    if not values:
+        raise ValueError("values must not be empty")
+    sorted_values = sorted(values)
+    rank = max(1, math.ceil((percentile / 100.0) * len(sorted_values)))
+    return sorted_values[rank - 1]
+
+
+def _format_token_summary(values: list[int]) -> str:
+    average = sum(values) / len(values)
+    return (
+        f"min={min(values)} avg={average:.1f} "
+        f"p50={_nearest_rank_percentile(values, 50)} "
+        f"p95={_nearest_rank_percentile(values, 95)} "
+        f"max={max(values)}"
+    )
+
+
+def _log_context_usage_summary(
+    trace_records: list[dict[str, object]],
+    *,
+    n_ctx: int,
+) -> None:
+    prompt_tokens = [
+        int(value)
+        for record in trace_records
+        for value in [record.get("prompt_tokens")]
+        if isinstance(value, int)
+    ]
+    total_tokens = [
+        int(value)
+        for record in trace_records
+        for value in [record.get("total_tokens")]
+        if isinstance(value, int)
+    ]
+
+    if prompt_tokens:
+        LOGGER.info(
+            "Context usage prompt_tokens: %s",
+            _format_token_summary(prompt_tokens),
+        )
+    if total_tokens:
+        max_total_tokens = max(total_tokens)
+        LOGGER.info(
+            "Context usage total_tokens: %s n_ctx=%s max_utilization=%.1f%%",
+            _format_token_summary(total_tokens),
+            n_ctx,
+            (100.0 * max_total_tokens / n_ctx) if n_ctx > 0 else 0.0,
+        )
+
+
+def _resolve_existing_file(path_string: str, *, description: str) -> Path:
+    path = Path(path_string).expanduser().resolve()
+    if not path.exists():
+        if description == "input JSONL":
+            raise FileNotFoundError(
+                f"{description} not found: {path}\n"
+                "Run `make setup` to install dependencies and clone the public data repo,\n"
+                "or point --input-jsonl to an existing file.\n"
+                "Default example path after setup:\n"
+                "  HIPE-2026-data/data/newspapers/v1.0/HIPE-2026-v1.0-impresso-train-en.jsonl\n"
+                "Source repo:\n"
+                "  https://github.com/hipe-eval/HIPE-2026-data/"
+            )
+        raise FileNotFoundError(f"{description} not found: {path}")
+    if not path.is_file():
+        raise FileNotFoundError(f"{description} is not a file: {path}")
+    return path
+
+
+def _prepare_output_path(path_string: str) -> Path:
+    path = Path(path_string).expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _project_relative_path(path: str | Path | None) -> str | None:
+    if path is None:
+        return None
+    resolved_path = Path(path).expanduser().resolve()
+    return os.path.relpath(resolved_path, Path.cwd().resolve())
+
+
+def write_run_config_json(
+    *,
+    path: str | Path,
+    input_jsonl: Path,
+    output_jsonl: Path,
+    debug_jsonl: Path | None,
+    prompt_file: str | None,
+    config_file: str | None,
+    model_path: Path,
+    model_source: str,
+    hf_repo: object,
+    hf_filename: object,
+    cache_dir: object,
+    model_name: object,
+    generation_config: GenerationConfig,
+    max_docs: int | None,
+) -> None:
+    run_config_path = _prepare_output_path(str(path))
+    payload = {
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "input_jsonl": _project_relative_path(input_jsonl),
+        "output_jsonl": _project_relative_path(output_jsonl),
+        "debug_jsonl": _project_relative_path(debug_jsonl),
+        "prompt_file": _project_relative_path(prompt_file),
+        "config_file": _project_relative_path(config_file),
+        "model": {
+            "name": model_name,
+            "source": model_source,
+            "resolved_path": _project_relative_path(model_path),
+            "hf_repo": hf_repo,
+            "hf_filename": hf_filename,
+            "cache_dir": _project_relative_path(cache_dir),
+        },
+        "generation": asdict(generation_config),
+        "max_docs": max_docs,
+    }
+    with run_config_path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+    LOGGER.info("Wrote run config to %s", run_config_path)
+
+
+def main() -> None:
+    parser = build_arg_parser()
+    args = parser.parse_args()
+    config_values = load_run_config(args.config)
+
+    input_jsonl = _resolve_existing_file(args.input_jsonl, description="input JSONL")
+    output_jsonl = _prepare_output_path(args.output_jsonl)
+    debug_jsonl = (
+        _prepare_output_path(args.debug_jsonl) if args.debug_jsonl else None
+    )
+    run_config_json = (
+        _prepare_output_path(args.run_config_json) if args.run_config_json else None
+    )
+    LOGGER.info("Input JSONL: %s", input_jsonl)
+    LOGGER.info("Output JSONL: %s", output_jsonl)
+    if debug_jsonl:
+        LOGGER.info("Debug JSONL: %s", debug_jsonl)
+    if run_config_json:
+        LOGGER.info("Run config JSON: %s", run_config_json)
+
+    documents = load_jsonl(input_jsonl)
+    if args.max_docs is not None:
+        documents = documents[: args.max_docs]
+    LOGGER.info("Loaded %s documents", len(documents))
+
+    prompt_template = load_prompt_template(_setting(args, config_values, "prompt_file"))
+    config = GenerationConfig(
+        temperature=float(_setting(args, config_values, "temperature", 0.0)),
+        seed=int(_setting(args, config_values, "seed", 42)),
+        max_tokens=int(_setting(args, config_values, "max_tokens", 512)),
+        top_p=float(_setting(args, config_values, "top_p", 0.95)),
+        top_k=int(_setting(args, config_values, "top_k", 40)),
+        repeat_penalty=float(_setting(args, config_values, "repeat_penalty", 1.0)),
+        n_ctx=int(_setting(args, config_values, "n_ctx", 8192)),
+        n_gpu_layers=_optional_int_setting(args, config_values, "n_gpu_layers"),
+        flash_attn=bool(_setting(args, config_values, "flash_attn", True)),
+    )
+    LOGGER.info(
+        "Generation config: decode_mode=%s temperature=%s seed=%s max_tokens=%s top_p=%s top_k=%s repeat_penalty=%s n_ctx=%s n_gpu_layers=%s flash_attn=%s",
+        _decode_mode_label(config.temperature),
+        config.temperature,
+        config.seed,
+        config.max_tokens,
+        config.top_p,
+        config.top_k,
+        config.repeat_penalty,
+        config.n_ctx,
+        config.n_gpu_layers,
+        config.flash_attn,
+    )
+    model_path = resolve_model_path(
+        model_path=_setting(args, config_values, "model_path"),
+        hf_repo=_setting(args, config_values, "hf_repo"),
+        hf_filename=_setting(args, config_values, "hf_filename"),
+        cache_dir=_setting(args, config_values, "cache_dir"),
+    )
+    model_source = "local file" if _setting(args, config_values, "model_path") else "huggingface"
+    if _setting(args, config_values, "model_path"):
+        LOGGER.info("Model source: local file")
+    else:
+        LOGGER.info(
+            "Model source: Hugging Face repo=%s filename=%s",
+            _setting(args, config_values, "hf_repo"),
+            _setting(args, config_values, "hf_filename"),
+        )
+    LOGGER.info("Resolved model path: %s", model_path)
+    if run_config_json:
+        write_run_config_json(
+            path=run_config_json,
+            input_jsonl=input_jsonl,
+            output_jsonl=output_jsonl,
+            debug_jsonl=debug_jsonl,
+            prompt_file=_setting(args, config_values, "prompt_file"),
+            config_file=args.config,
+            model_path=model_path,
+            model_source=model_source,
+            hf_repo=_setting(args, config_values, "hf_repo"),
+            hf_filename=_setting(args, config_values, "hf_filename"),
+            cache_dir=_setting(args, config_values, "cache_dir"),
+            model_name=_setting(args, config_values, "model_name", DEFAULT_MODEL_NAME),
+            generation_config=config,
+            max_docs=args.max_docs,
+        )
+    runner = LlamaCppRunner(model_path=model_path, config=config)
+    if debug_jsonl:
+        initialize_debug_jsonl(debug_jsonl)
+
+    predicted_documents, debug_records = run_documents(
+        documents,
+        runner=runner,
+        prompt_template=prompt_template,
+        debug_jsonl=debug_jsonl,
+    )
+    _log_context_usage_summary(debug_records, n_ctx=config.n_ctx)
+    write_submission_jsonl(predicted_documents, output_jsonl)
+    LOGGER.info("Wrote predictions to %s", output_jsonl)
+    if debug_jsonl:
+        LOGGER.info("Wrote debug trace to %s", debug_jsonl)
+
+    print(
+        f"Processed {len(predicted_documents)} documents with model "
+        f"{_setting(args, config_values, 'model_name', DEFAULT_MODEL_NAME)} "
+        f"from {Path(model_path).name}"
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -81,7 +81,6 @@ Contains our final submitted prediction files and related documentation.
 
 - **12 prediction files** (4 test sets × 3 runs) in JSONL format, validated against the official schema.
 - `submission-strategy.txt` — Details of each submitted run and the submission confirmation.
-- `submission-confirmation.pdf` — Official receipt from the organisers.
 
 Test sets covered: `impresso-test-de`, `impresso-test-en`, `impresso-test-fr`, `surprise-test-fr`.
 

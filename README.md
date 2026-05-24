@@ -1,6 +1,6 @@
 # HIPE-2026 — Team Hansel & Gretel
 
-**Team 9 (Hansel & Gretel)** — [HIPE-2026 Shared Task](https://hipe-eval.github.io/HIPE-2026/) on Person–Place Relation Extraction from Historical Newspapers.
+**Team Hansel & Gretel** — [HIPE-2026 Shared Task](https://hipe-eval.github.io/HIPE-2026/) on Person–Place Relation Extraction from Historical Newspapers.
 
 **Authors:**
 - Pradyuman Singh Shekhawat — pradyuman_ss@cs.iitr.ac.in

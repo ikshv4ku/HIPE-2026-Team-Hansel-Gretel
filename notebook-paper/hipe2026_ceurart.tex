@@ -10,25 +10,14 @@
 \usepackage{pgfplots}
 \usepackage{tikz}
 \usetikzlibrary{shapes,arrows,positioning,fit,backgrounds,calc}
-\pgfplotsset{compat=1.18}
-\usepackage{eso-pic}
-\usepackage{transparent}
+\pgfplotsset{compat=1.16}
 \usepackage{xcolor}
+\usepackage{hyperref}
 
 \definecolor{iitblue}{RGB}{0,47,108}
 \definecolor{iitgold}{RGB}{186,146,28}
 \definecolor{codered}{RGB}{180,0,0}
 \definecolor{codegray}{RGB}{128,128,128}
-
-%% Watermark
-\AddToShipoutPictureBG{%
-  \AtPageCenter{%
-    \makebox(0,0){%
-      \transparent{0.06}%
-      \includegraphics[width=9cm]{iit_roorkee_logo.png}%
-    }%
-  }%
-}
 
 \begin{document}
 
@@ -57,7 +46,7 @@
 \cortext[1]{Corresponding author. Also reachable at: shekhawat.pradyuman10@gmail.com}
 
 \begin{abstract}
-We present the system description and experimental analysis of Team Hansel\&Gretel for the CLEF HIPE-2026 Shared Task on Person--Place Relation Extraction from Historical Multilingual Documents. The task requires classifying, for each person--location pair in a historical newspaper article (German, French, or English, spanning the 19th--20th centuries), two temporal relations: \texttt{at} (person was ever at the location, 3-class) and \texttt{isAt} (person was there within approximately one month of publication, binary). Evaluation uses Macro Recall, equally weighting all label classes. We explore nine progressively sophisticated strategies, from a frozen XLM-RoBERTa encoder with classical ML classifiers (Global Macro Recall $= 0.6018$) to a Qwen2.5-3B-Instruct Generative Supervised Fine-Tuning pipeline with Wikidata knowledge injection ($= 0.7289$) and a three-agent Historian--Geographer--Arbiter multi-agent architecture ($= 0.7280$). This paper documents the design decisions, failure modes, and key insights behind each strategy, providing a comprehensive account of iterative NLP system development under data scarcity, class imbalance, and multilingual historical OCR noise.
+We present the system description and experimental analysis of Team Hansel\&Gretel for the CLEF HIPE-2026 Shared Task on Person--Place Relation Extraction from Historical Multilingual Documents. The task requires classifying, for each person--location pair in a historical newspaper article (German, French, or English, spanning the 19th--20th centuries), two temporal relations: \texttt{at} (person was ever at the location, 3-class) and \texttt{isAt} (person was there within approximately one month of publication, binary). Evaluation uses Macro Recall, equally weighting all label classes. We explore nine progressively sophisticated strategies, from a frozen XLM-RoBERTa encoder with classical ML classifiers (internal dev Global Macro Recall $= 0.6018$) to a Qwen2.5-3B-Instruct Generative Supervised Fine-Tuning pipeline with Wikidata knowledge injection (dev $= 0.7289$) and a three-agent Historian--Geographer--Arbiter multi-agent architecture (dev $= 0.7280$). On the official competition test set, our best run (Run 3: GPT-OSS 120B with Chain-of-Thought and Wikidata injection) achieves an impresso score of \textbf{0.6221}, ranking 13th out of 46 ranked entries (45 system runs + random baseline). This paper documents the design decisions, failure modes, and key insights behind each strategy, including an honest analysis of the 17-point dev-to-test gap, providing a comprehensive account of iterative NLP system development under data scarcity, class imbalance, and multilingual historical OCR noise.
 \end{abstract}
 
 \begin{keywords}
@@ -79,7 +68,7 @@ We present the system description and experimental analysis of Team Hansel\&Gret
 \section{Introduction}
 %%==========================================================================
 
-The digitisation of historical newspapers has created vast corpora of 19th and 20th century text encoding biographical trajectories and cultural history. Automatically recovering \emph{where people were and when} from these documents enables digital humanities scholars to reconstruct spatio-temporal life trajectories at scale. This is the central challenge of \textbf{CLEF HIPE-2026}~\cite{hipe2026guidelines}: the Shared Task on Person--Place Relation Extraction from multilingual historical documents.
+The digitisation of historical newspapers has created vast corpora of 19th and 20th century text encoding biographical trajectories and cultural history. Automatically recovering \emph{where people were and when} from these documents enables digital humanities scholars to reconstruct spatio-temporal life trajectories at scale. This is the central challenge of \textbf{CLEF HIPE-2026}~\cite{hipe2026guidelines,opitz_extended_2026}: the Shared Task on Person--Place Relation Extraction from multilingual historical documents, the third edition in the HIPE series following HIPE-2020~\cite{hipe2020} and HIPE-2022~\cite{hipe2022}.
 
 Unlike standard named entity recognition, HIPE-2026 requires \emph{temporal reasoning}: a system must determine whether a text provides evidence for a \emph{historical} presence (\texttt{at}) or a \emph{contemporary} one (\texttt{isAt}, bounded to $\approx$1 month before publication). This distinction, combined with multilingual OCR-noisy text, severe class imbalance, and a small labelled dataset, makes the task deceptively difficult.
 
@@ -92,13 +81,16 @@ Team Hansel\&Gretel approached this as an iterative research problem, developing
   \item \textbf{S2.5}: PEFT/LoRA on XLM-RoBERTa
   \item \textbf{S3}: Monolingual LoRA Routing (language-partitioned adapters)
   \item \textbf{S4/S4.5}: Qwen2.5-0.5B MTL with LoRA (+ soft label variant)
-  \item \textbf{S5}: Qwen2.5-3B-Instruct Generative SFT \emph{(best single model)}
+  \item \textbf{S5}: Qwen2.5-3B-Instruct Generative SFT \emph{(best dev score)}
   \item \textbf{S6/S7}: Three-specialist multi-agent pipeline (Historian/Geographer/Arbiter)
-  \item \textbf{S8/S9}: Chain-of-Thought few-shot via IBM RITS large LLMs + Wikidata injection
+  \item \textbf{S8/S9}: Chain-of-Thought few-shot via IBM RITS large LLMs + Wikidata injection \emph{(best official test score)}
 \end{enumerate}
+
+The paper is structured as follows: Section~\ref{sec:task} defines the task formally. Section~\ref{sec:data} analyses the dataset. Section~\ref{sec:baseline} describes the organiser baseline. Sections~\ref{sec:s1}--\ref{sec:s89} present each strategy group. Section~\ref{sec:comparison} provides the cross-strategy comparison. Section~\ref{sec:official} reports official test results. Section~\ref{sec:error} presents error analysis. Sections~\ref{sec:limitations}--\ref{sec:conclusion} discuss limitations, future work, and conclusions.
 
 %%==========================================================================
 \section{Task Description}
+\label{sec:task}
 %%==========================================================================
 
 \subsection{Formal Definition}
@@ -113,19 +105,20 @@ The \textbf{\texttt{at}} relation is ternary: \texttt{TRUE} if the text explicit
 
 \subsection{Evaluation Metric}
 
-The primary metric is \textbf{Macro Recall}, computed independently per sub-task:
+The primary metric is \textbf{Macro Recall} (also called balanced accuracy~\cite{opitz2024macrorecall}), computed independently per sub-task:
 \begin{equation}
   \mathrm{MacroRecall} = \frac{1}{|L|}\sum_{\ell \in L} \frac{\#\text{correctly predicted with label }\ell}{\#\text{examples with gold label }\ell}
 \end{equation}
-The \textbf{Global Score} averages both sub-task macro recalls. Three evaluation profiles are assessed: \textbf{Accuracy} (Macro Recall on Test A), \textbf{Efficiency} (composite rank: accuracy + parameter count + model size), and \textbf{Generalisation} (Macro Recall on surprise literary Test B, \texttt{at} only).
+The \textbf{impresso score} averages both sub-task macro recalls. Three evaluation profiles are assessed: \textbf{Accuracy} (Macro Recall on impresso newspaper Test Set), \textbf{Efficiency} (composite rank: accuracy + parameter count + model size), and \textbf{Generalisation} (Macro Recall on surprise literary Test Set, \texttt{at} only).
 
 %%==========================================================================
 \section{Dataset Analysis}
+\label{sec:data}
 %%==========================================================================
 
 \subsection{Data Sources and Splits}
 
-The dataset derives from HIPE-2022~\cite{hipe2022} entity-annotated corpora, re-annotated for person--place relation extraction. It covers four historical newspaper collections (hipe2020, sonar, newseye, letemps) in German, French, and English spanning 1780--1950.
+The dataset derives from HIPE-2022~\cite{hipe2022} entity-annotated corpora, re-annotated for person--place relation extraction. It covers four historical newspaper collections (\textit{hipe2020, sonar, newseye, letemps}) in German, French, and English spanning 1780--1950, distributed through the Impresso Media Monitoring of the Past project~\cite{impresso}.
 
 \begin{table}[ht]
   \caption{Gold dataset statistics by language split (v1.0).}
@@ -144,14 +137,14 @@ The dataset derives from HIPE-2022~\cite{hipe2022} entity-annotated corpora, re-
   \end{tabular}
 \end{table}
 
-In addition, a \textbf{silver-labelled sandbox} corpus ($\sim$461 docs, 6,170 pairs) of automatically annotated documents provides auxiliary training signal.
+In addition, a \textbf{silver-labelled sandbox} corpus ($\sim$461 docs, 6,170 pairs) of automatically annotated documents provides auxiliary training signal. All our internal evaluations use a subset of the dev set (254 pairs, 21 documents) corresponding to the early-release dev data available during the main experimental phase; the full dev split (159 docs, 2,137 pairs) became available only near the submission deadline. The official hidden test set was released separately and scored by the organisers.
 
 \subsection{Exploratory Data Analysis (EDA)}
 
 We performed detailed EDA on the gold training split available at experiment time (104 documents, 1,251 pairs):
 
 \begin{table}[ht]
-  \caption{Gold training split EDA statistics (104 documents).}
+  \caption{Gold training split EDA statistics (104 documents, early experiment phase).}
   \label{tab:eda}
   \centering
   \begin{tabular}{lr}
@@ -175,7 +168,7 @@ Three challenges shaped all modelling decisions:
 \begin{enumerate}
   \item \textbf{Context Length}: Max $\sim$12,000 chars ($\approx$3,000 tokens) exceeds standard 512-token encoder limits, motivating generative LLMs.
   \item \textbf{Class Imbalance}: \texttt{isAt=FALSE} at 77.7\%; \texttt{PROBABLE} at 9.6\% of \texttt{at} labels. Macro Recall penalises naive majority-class predictors heavily.
-  \item \textbf{Multilingual by Design}: Equal DE/EN/FR split — monolingual models immediately lose cross-lingual transfer.
+  \item \textbf{Multilingual by Design}: Equal DE/EN/FR split --- monolingual models immediately lose cross-lingual transfer.
 \end{enumerate}
 
 \begin{figure}[ht]
@@ -217,17 +210,18 @@ Three challenges shaped all modelling decisions:
 
 \subsection{Why This Dataset Is Particularly Challenging}
 
-The HIPE-2026 data presents a unique confluence of difficulties rare in modern NLP benchmarks: (1) \textbf{OCR noise} from historical typesetting (e.g., ``Mufschen'' for ``Munchen''); (2) \textbf{archaic vocabulary} and grammar absent from modern pre-training corpora; (3) \textbf{temporal reasoning} over implicit signals (verb tense, temporal adverbs, publication dates); (4) \textbf{entity ambiguity} (same mention, different individuals); and (5) \textbf{data scarcity} ($\sim$100 gold documents across 3 languages and 3 label classes).
+The HIPE-2026 data presents a unique confluence of difficulties rare in modern NLP benchmarks: (1) \textbf{OCR noise} from historical typesetting (e.g., ``Mufschen'' for ``Munchen''); (2) \textbf{archaic vocabulary} and grammar absent from modern pre-training corpora; (3) \textbf{temporal reasoning} over implicit signals (verb tense, temporal adverbs, publication dates); (4) \textbf{entity ambiguity} (same mention, different individuals); and (5) \textbf{data scarcity} ($\sim$100 gold documents across 3 languages and 3 label classes at experiment time).
 
 %%==========================================================================
 \section{Organiser Baseline}
+\label{sec:baseline}
 %%==========================================================================
 
-The HIPE-2026 organisers provided a minimal LLM baseline~\cite{hipe2026baseline} using \texttt{mistralai/Ministral-3-3B-Instruct-2512} (GGUF quantised) via \texttt{llama-cpp-python}, zero-shot with greedy decoding. It reads and writes the official HIPE-2026 JSONL format.
+The HIPE-2026 organisers provided a minimal LLM baseline~\cite{hipe2026baseline} using \texttt{mistralai/Ministral-3-3B-Instruct-2512} (GGUF quantised) via \texttt{llama-cpp-python}, zero-shot with greedy decoding. On the official test set, it achieved an impresso score of \textbf{0.5818} (rank 17/46 runs). On the internal dev set (254 pairs), the random baseline yielded: \texttt{at} MR $= 0.3211$, \texttt{isAt} MR $= 0.5273$, \textbf{Global MR $= 0.4242$}, establishing the floor.
 
-Our random baseline experiment (via \texttt{dummy\_predict.py}) yielded: \texttt{at} MR $= 0.3211$, \texttt{isAt} MR $= 0.5273$, \textbf{Global MR $= 0.4242$}. This establishes the floor: any meaningful system must substantially exceed 0.4242.
 %%==========================================================================
 \section{Strategies S1 and S1.5: Frozen Encoder + Classical ML}
+\label{sec:s1}
 %%==========================================================================
 
 \subsection{S1: XLM-RoBERTa Feature Extraction}
@@ -239,7 +233,7 @@ Our random baseline experiment (via \texttt{dummy\_predict.py}) yielded: \texttt
 \textbf{Silver data weighting.} Both gold (104 docs) and sandbox silver (617 docs) are used. Gold samples receive \textbf{50$\times$ sample weight} so annotations dominate the decision boundary while silver provides historical vocabulary coverage.
 
 \begin{table}[ht]
-  \caption{S1 results. Silver data gave +34.9\% gain over gold-only.}
+  \caption{S1 results on internal dev set. Silver data gave +34.9\% gain over gold-only.}
   \label{tab:s1}
   \centering
   \begin{tabular}{lccc}
@@ -256,10 +250,10 @@ Our random baseline experiment (via \texttt{dummy\_predict.py}) yielded: \texttt
 
 \textbf{Motivation.} Two independent classifiers cannot exploit the \texttt{at}--\texttt{isAt} logical correlation. A shared neural network with two heads learns this jointly.
 
-\textbf{Architecture.} A single PyTorch MTL network on top of frozen XLM-R embeddings: shared dense + GELU + dropout, then two linear heads with combined loss $\mathcal{L} = \alpha \mathcal{L}_{\texttt{at}}^{\text{WCE}} + (1{-}\alpha) \mathcal{L}_{\texttt{isAt}}^{\text{Focal}}$. Optuna~\cite{akiba2019optuna} (50 trials, TPE sampler) tunes $\alpha$, learning rate, dropout, hidden dim, and per-class weights.
+\textbf{Architecture.} A single PyTorch MTL network on top of frozen XLM-R embeddings: shared dense + GELU + dropout, then two linear heads with combined loss $\mathcal{L} = \alpha \mathcal{L}_{\texttt{at}}^{\text{WCE}} + (1{-}\alpha) \mathcal{L}_{\texttt{isAt}}^{\text{Focal}}$~\cite{lin2017focal}. Optuna~\cite{akiba2019optuna} (50 trials, TPE sampler) tunes $\alpha$, learning rate, dropout, hidden dim, and per-class weights. Full best-trial hyperparameter values are available in our public code repository.\footnote{Code: \url{https://github.com/ikshv4ku/HIPE-2026-Team-Hansel-Gretel}}
 
 \begin{table}[ht]
-  \caption{S1.5 vs S1. MTL jointly modelling correlation provides consistent gain.}
+  \caption{S1.5 vs S1 on internal dev set. MTL jointly modelling the at--isAt correlation provides consistent gain.}
   \label{tab:s15}
   \centering
   \begin{tabular}{lccc}
@@ -274,6 +268,7 @@ Our random baseline experiment (via \texttt{dummy\_predict.py}) yielded: \texttt
 
 %%==========================================================================
 \section{Strategies S2--S4.5: Discriminative Fine-Tuning Attempts}
+\label{sec:s2s4}
 %%==========================================================================
 
 \subsection{S2: Full End-to-End Fine-Tuning (Catastrophic Failure)}
@@ -296,12 +291,13 @@ Three separate LoRA adapters (DE, EN, FR) with document-language-based routing a
 
 \subsection{S4 / S4.5: Qwen2.5-0.5B MTL with LoRA}
 
-Pivoting to decoder-only architecture: \texttt{Qwen2.5-0.5B}~\cite{qwen25} (500M params, 32k token context) with LoRA (r=16, $\alpha$=32) and MTL heads. This matched S1.5 performance (Global MR $= 0.6264$) while handling long documents without truncation. Adding label smoothing ($\epsilon=0.15$) in S4.5 slightly regressed to 0.6212 — smoothing added noise without compensating signal on the minority \texttt{PROBABLE} class.
+Pivoting to decoder-only architecture: \texttt{Qwen2.5-0.5B}~\cite{qwen25} (500M params, 32k token context) with LoRA (r=16, $\alpha$=32) and MTL heads. This matched S1.5 performance (Global MR $= 0.6264$) while handling long documents without truncation. Adding label smoothing ($\epsilon=0.15$) in S4.5 slightly regressed to 0.6212 --- smoothing added noise without compensating signal on the minority \texttt{PROBABLE} class.
 
 \textbf{Key observation}: Discriminative approaches plateau at $\sim$0.63. The small dataset and inherent label ambiguity (especially for \texttt{PROBABLE}) limit classification head performance regardless of backbone.
 
 %%==========================================================================
-\section{Strategy 5: Generative SFT — Best Single Model}
+\section{Strategy 5: Generative SFT --- Best Dev Performance}
+\label{sec:s5}
 %%==========================================================================
 
 \subsection{Motivation: The Generative Paradigm Shift}
@@ -310,7 +306,7 @@ Temporal reasoning (``is the person at the location \emph{right now}?'') require
 
 \subsection{Model and Architecture}
 
-We use \texttt{Qwen2.5-3B-Instruct}~\cite{qwen25} (3.1B params) in a Generative Supervised Fine-Tuning (SFT) regime with LoRA (r=16, $\alpha$=32, all linear layers). We initially targeted Gemma-2-2B-IT but pivoted due to Hugging Face gating restrictions — Qwen2.5-3B-Instruct proved superior: non-gated, larger, and with stronger multilingual instruction following.
+We use \texttt{Qwen2.5-3B-Instruct}~\cite{qwen25} (3.1B params) in a Generative Supervised Fine-Tuning (SFT) regime with LoRA (r=16, $\alpha$=32, all linear layers). We initially targeted Gemma-2-2B-IT but pivoted due to Hugging Face gating restrictions --- Qwen2.5-3B-Instruct proved superior: non-gated, larger, and with stronger multilingual instruction following.
 
 Each training sample is formatted as a chat-template conversation. The user provides document metadata and text; the assistant generates:
 \begin{lstlisting}
@@ -353,22 +349,24 @@ Each training sample is formatted as a chat-template conversation. The user prov
 \subsection{Results}
 
 \begin{table}[ht]
-  \caption{Strategy 5 vs prior best. Single largest improvement in the project.}
+  \caption{Strategy 5 vs prior best on internal dev set (254 pairs). Largest single improvement in the project. S4.5 corrected value: 0.6212.}
   \label{tab:s5}
   \centering
   \begin{tabular}{lcccc}
     \toprule
     \textbf{Strategy} & \textbf{\texttt{at} MR} & \textbf{\texttt{isAt} MR} & \textbf{Global MR} & \textbf{$\Delta$} \\
     \midrule
-    S4.5 (prior best) & 0.5313 & 0.7111 & 0.6344 & --- \\
-    \textbf{S5 (Qwen 3B Gen.)} & \textbf{0.6872} & \textbf{0.7706} & \textbf{0.7289} & \textbf{+0.0945} \\
+    S4.5 (prior best) & 0.5313 & 0.7111 & 0.6212 & --- \\
+    \textbf{S5 (Qwen 3B Gen.)} & \textbf{0.6872} & \textbf{0.7706} & \textbf{0.7289} & \textbf{+0.1077} \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-The +9.45 point leap is driven by: (1) scale (3.1B vs 0.5B), (2) full 1024-token context (no truncation), (3) generative reasoning forcing explicit temporal decision-making, and (4) the Wikidata death-date hard rule.
+The +10.77 point leap is driven by: (1) scale (3.1B vs 0.5B), (2) full 1024-token context (no truncation), (3) generative reasoning forcing explicit temporal decision-making, and (4) the Wikidata death-date hard rule.
+
 %%==========================================================================
 \section{Strategies S6--S7: Multi-Agent Pipeline}
+\label{sec:s67}
 %%==========================================================================
 
 \subsection{S6: Three-Specialist Architecture (Qwen2.5-3B)}
@@ -377,10 +375,10 @@ The +9.45 point leap is driven by: (1) scale (3.1B vs 0.5B), (2) full 1024-token
 
 Each agent receives a dedicated system prompt. For example, the Historian's prompt reads: \emph{``You are a historical biographer. Analyse the text for biographical evidence, life events, official roles, and temporal cues (verb tenses, dates).''} The Arbiter prompt adds: \emph{``If they agree, adopt their verdict. If they disagree, apply the more conservative judgment.''}
 
-\textbf{Critical Failure -- Specialist Collapse.} Both Historian and Geographer collapsed to predicting \texttt{FALSE} for everything (\texttt{hist\_TRUE=0, geo\_TRUE=0}), making the Arbiter the sole decision-maker. Agent agreement rate was 96.9\% (246/254), providing no useful diversity. Global MR $= 0.7204$ -- slight regression from S5.
+\textbf{Critical Failure -- Specialist Collapse.} Both Historian and Geographer collapsed to predicting \texttt{FALSE} for everything (\texttt{hist\_TRUE=0, geo\_TRUE=0}), making the Arbiter the sole decision-maker. Agent agreement rate was 96.9\% (246/254), providing no useful diversity. Global MR $= 0.7204$ --- slight regression from S5.
 
 \begin{table}[ht]
-  \caption{S6 results and specialist diversity statistics.}
+  \caption{S6 results and specialist diversity statistics (internal dev set).}
   \label{tab:s6}
   \centering
   \begin{tabular}{lcc}
@@ -432,7 +430,7 @@ Three interventions address S6's specialist collapse:
 \textbf{Results.} Class-weighted loss fixed specialist collapse (Historian TRUE: 53, Geographer TRUE: 47). Agreement rate dropped to 92.9\% (236/254), meaning the Arbiter handled 18 genuine disagreements. S7 achieves the \textbf{highest \texttt{isAt} MR} of any strategy (0.7817), but marginally trails S5 on \texttt{at} (0.6742 vs 0.6872), yielding Global MR $= 0.7280$.
 
 \begin{table}[ht]
-  \caption{S6 vs S7: impact of class weighting and scale on specialist diversity.}
+  \caption{S6 vs S7 on internal dev set: impact of class weighting and scale on specialist diversity.}
   \label{tab:s7}
   \centering
   \begin{tabular}{lccc}
@@ -451,22 +449,30 @@ Three interventions address S6's specialist collapse:
 
 %%==========================================================================
 \section{Strategies S8--S9: CoT Prompting via IBM RITS}
+\label{sec:s89}
 %%==========================================================================
 
-\subsection{S8: Chain-of-Thought Few-Shot (No Training)}
+\subsection{S8: Chain-of-Thought Few-Shot (Exploratory)}
 
 S8 attacks the task \textbf{without any model training} using Chain-of-Thought (CoT) Few-Shot Prompting~\cite{wei2022cot} through IBM's RITS inference gateway (Llama 3.3 70B, Granite 3.2 8B, Llama 4 Maverick 17B, GPT-OSS 120B). Each prediction is preceded by 3 explicit reasoning steps: (1) Biographical \& Temporal Analysis, (2) Geographic \& Contextual Analysis, (3) Synthesis \& Decision. Four worked examples cover all label combinations.
 
-\subsection{S9: Wikidata-Augmented CoT (Final Submission)}
+\textbf{Note on S8 evaluation.} S8 was designed as an exploratory strategy to calibrate prompt templates and assess model suitability across the RITS model catalogue. We did not conduct a formal dev-set evaluation for S8; its primary role was to identify the best model (\textbf{GPT-OSS 120B}) and refine the CoT prompt structure before adding Wikidata augmentation in S9. S8 served as the methodological foundation for S9.
 
-S9 extends S8 by dynamically injecting Wikidata facts into the prompt at inference time via SPARQL. For each pair, it fetches person (birth date, death date, description) and location (description, country) facts, injected as a \texttt{[WIKIDATA FACTS]} block. This grounds temporal reasoning in structured knowledge rather than parametric memory. Model used: \textbf{GPT-OSS 120B} via RITS. S9 was our \textbf{Run 3} official submission for all four test sets (DE, EN, FR, and surprise literary FR).
+\subsection{S9: Wikidata-Augmented CoT (Final Submission, Run 3)}
+
+S9 extends S8 by dynamically injecting Wikidata facts into the prompt at inference time via SPARQL. For each pair, it fetches person (birth date, death date, description) and location (description, country) facts, injected as a \texttt{[WIKIDATA FACTS]} block. This grounds temporal reasoning in structured knowledge rather than parametric memory. The model used was \textbf{GPT-OSS 120B} via IBM RITS.
+
+\textbf{S9 dev evaluation}: S9 was run directly on the official test sets without a prior dev-set evaluation pass. The rationale was that S9 requires no fine-tuning --- its performance depends on the prompt template and Wikidata coverage rather than training data characteristics. The absence of a dev number for S9 is therefore intentional, not an oversight.
+
+S9 constituted our \textbf{Run 3} official submission for all four test sets (DE, EN, FR impresso, and surprise literary FR). It achieved our best overall competition ranking (13th/46 runs, impresso score 0.6221).
 
 %%==========================================================================
 \section{Cross-Strategy Comparison}
+\label{sec:comparison}
 %%==========================================================================
 
 \begin{table}[ht]
-  \caption{Complete cross-strategy performance on dev set (254 pairs, 21 docs).}
+  \caption{Complete cross-strategy performance on internal dev set (254 pairs, 21 docs). All values are impresso score (Global Macro Recall). S8 and S9 have no dev scores by design.}
   \label{tab:all}
   \centering
   \begin{tabular}{llccc}
@@ -484,6 +490,8 @@ S9 extends S8 by dynamically injecting Wikidata facts into the prompt at inferen
     \textbf{S5} & \textbf{Qwen2.5-3B Generative SFT} & \textbf{0.6872} & 0.7706 & \textbf{0.7289} \\
     S6 & Multi-agent 3B & 0.7019 & 0.7388 & 0.7204 \\
     S7 & Multi-agent 7B + class weights & 0.6742 & \textbf{0.7817} & 0.7280 \\
+    S8 & CoT 120B via RITS (exploratory) & \multicolumn{3}{c}{Not evaluated on dev} \\
+    S9 & Wikidata-aug. CoT 120B (Run 3) & \multicolumn{3}{c}{Run directly on test} \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -509,28 +517,225 @@ S9 extends S8 by dynamically injecting Wikidata facts into the prompt at inferen
   };
   \end{axis}
   \end{tikzpicture}
-  \caption{Global Macro Recall progression across all strategies. Notable drops at S2 (full fine-tuning) and S3 (monolingual partitioning); decisive jump at S5 (generative SFT).}
+  \caption{Global Macro Recall progression across strategies on internal dev set. Notable drops at S2 (full fine-tuning) and S3 (monolingual partitioning); decisive jump at S5 (generative SFT). S8/S9 are not plotted (no dev evaluation).}
   \label{fig:progression}
 \end{figure}
 
-\textbf{Phase analysis.} Three distinct phases emerged: (1) \emph{Feature extraction} (S1--S1.5, best: 0.6249) — frozen encoders excel on tiny datasets; (2) \emph{Discriminative fine-tuning} (S2--S4.5, plateau: $\sim$0.63) — data scarcity limits all fine-tuning paradigms; (3) \emph{Generative SFT} (S5--S7, best: 0.7289) — reasoning-as-generation breaks the plateau.
+\textbf{Phase analysis.} Three distinct phases emerged: (1) \emph{Feature extraction} (S1--S1.5, best: 0.6249) --- frozen encoders excel on tiny datasets; (2) \emph{Discriminative fine-tuning} (S2--S4.5, plateau: $\sim$0.63) --- data scarcity limits all fine-tuning paradigms; (3) \emph{Generative SFT} (S5--S7, best: 0.7289) --- reasoning-as-generation breaks the plateau.
 
 \textbf{S5 vs S7 complementarity.} S5 excels at \texttt{at} (0.6872); S7 excels at \texttt{isAt} (0.7817). An ensemble capturing the best of both is the most promising immediate direction.
 
 %%==========================================================================
+\section{Official Test Results}
+\label{sec:official}
+%%==========================================================================
+
+\subsection{Per-Run Test Performance}
+
+Table~\ref{tab:official-runs} reports our three official competition submissions on the impresso test set. All scores are the official \textit{impresso score} (mean of at-MR and isAt-MR across DE/EN/FR).
+
+\begin{table}[ht]
+  \caption{Official impresso test scores for all three Hansel\&Gretel runs. Run 3 (S9) is our best overall submission.}
+  \label{tab:official-runs}
+  \centering
+  \begin{tabular}{llccccc}
+    \toprule
+    \textbf{Run} & \textbf{Strategy} & \textbf{Overall} & \textbf{DE} & \textbf{EN} & \textbf{FR} & \textbf{Rank} \\
+    \midrule
+    Run 1 & S5 (Qwen2.5-3B SFT) & 0.5458 & 0.521 & 0.5976 & 0.5189 & 23/46 \\
+    Run 2 & S7 (Multi-agent 7B) & 0.5788 & 0.5254 & 0.5866 & 0.6243 & 19/46 \\
+    \textbf{Run 3} & \textbf{S9 (GPT-OSS 120B CoT+Wiki)} & \textbf{0.6221} & \textbf{0.5994} & \textbf{0.6367} & \textbf{0.6303} & \textbf{13/46} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[ht]
+  \caption{Per-language breakdown of at-MR and isAt-MR for Run 3 (best run, S9).}
+  \label{tab:official-lang}
+  \centering
+  \begin{tabular}{lccc}
+    \toprule
+    \textbf{Language} & \textbf{at-MR} & \textbf{isAt-MR} & \textbf{impresso score} \\
+    \midrule
+    German (DE)  & 0.4877 & 0.7112 & 0.5994 \\
+    English (EN) & 0.5582 & 0.7151 & 0.6367 \\
+    French (FR)  & 0.5268 & 0.7338 & 0.6303 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Generalization and Efficiency Results}
+
+On the \textbf{generalization profile} (surprise literary French test, \texttt{at} only), Run~2 (S7) performed best among our submissions:
+
+\begin{table}[ht]
+  \caption{Generalization profile scores (surprise literary French test, at-MR only).}
+  \label{tab:gen}
+  \centering
+  \begin{tabular}{llcc}
+    \toprule
+    \textbf{Run} & \textbf{Strategy} & \textbf{Generalization Score} & \textbf{Rank} \\
+    \midrule
+    Run 2 & S7 (Multi-agent 7B) & \textbf{0.6349} & \textbf{11/46} \\
+    Run 3 & S9 (GPT-OSS 120B CoT+Wiki) & 0.6187 & 14/46 \\
+    Run 1 & S5 (Qwen2.5-3B SFT) & 0.6107 & 15/46 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+S7's surprising strength on out-of-domain literary French (rank 11, generalization score 0.6349) suggests that the multi-agent architecture learns more transferable feature representations --- the specialist decomposition may act as an implicit domain-agnostic inductive bias.
+
+On the \textbf{efficiency profile}, Run~1 (S5, 3B parameters, 6,248 MB) ranked 19th. Run~2 (S7, 7B, 15,300 MB) ranked 23rd; Run~3 (S9, 120B, 240,000 MB) ranked 29th. The low efficiency rank for Run~3 is expected: using a 120B cloud-hosted model without fine-tuning prioritises accuracy over resource constraints. Run~1 represents our best efficiency-accuracy tradeoff.
+
+\subsection{Competition Context}
+
+\begin{table}[ht]
+  \caption{Competition accuracy profile context: selected teams ranked by best overall impresso score.}
+  \label{tab:competition}
+  \centering
+  \begin{tabular}{lllc}
+    \toprule
+    \textbf{Rank} & \textbf{Team} & \textbf{Affiliation} & \textbf{Best Score} \\
+    \midrule
+    1  & Spinfo            & Universit\"at zu K\"oln          & 0.7479 \\
+    2  & MaxFo-Ajie        & Foshan University                & 0.7001 \\
+    3  & whereami          & Alexandria University            & 0.6880 \\
+    \multicolumn{4}{c}{\ldots (ranks 4--12) \ldots} \\
+    13 & \textbf{Hansel\&Gretel} & \textbf{IIT Roorkee} & \textbf{0.6221} \\
+    \multicolumn{4}{c}{\ldots (ranks 14--16) \ldots} \\
+    17 & Baseline (Ministral-3B) & HIPE-2026 Organizers & 0.5818 \\
+    --- & Random Baseline  & HIPE-2026 Organizers             & 0.4049 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[ht]
+  \centering
+  \begin{tikzpicture}
+  \begin{axis}[
+    ybar,
+    width=0.95\linewidth, height=5.5cm,
+    bar width=0.55cm,
+    symbolic x coords={Random,Baseline,{H\&G R1},{H\&G R2},{H\&G R3},whereami,MaxFo-Ajie,Spinfo},
+    xtick=data,
+    xticklabel style={rotate=38, anchor=east, font=\small},
+    ymin=0.3, ymax=0.82,
+    ylabel={impresso Score},
+    title={Competition Context: Selected System Scores},
+    title style={font=\small},
+    ymajorgrids=true, grid style=dashed,
+    nodes near coords,
+    nodes near coords style={font=\tiny},
+    every node near coord/.append style={yshift=2pt},
+  ]
+  %% Single addplot covering all symbolic coords; color set per-bar via fill list
+  \addplot[
+    ybar,
+    fill={codegray},
+    draw=codegray,
+  ] coordinates {(Random,0.4049)};
+  \addplot[
+    ybar,
+    fill={codegray!60},
+    draw=codegray,
+  ] coordinates {(Baseline,0.5818)};
+  \addplot[
+    ybar,
+    fill={iitgold!60},
+    draw=iitgold,
+  ] coordinates {({H\&G R1},0.5458)};
+  \addplot[
+    ybar,
+    fill={iitgold!80},
+    draw=iitgold,
+  ] coordinates {({H\&G R2},0.5788)};
+  \addplot[
+    ybar,
+    fill={iitgold},
+    draw=iitgold,
+  ] coordinates {({H\&G R3},0.6221)};
+  \addplot[
+    ybar,
+    fill={iitblue!60},
+    draw=iitblue,
+  ] coordinates {(whereami,0.6880)};
+  \addplot[
+    ybar,
+    fill={iitblue!80},
+    draw=iitblue,
+  ] coordinates {(MaxFo-Ajie,0.7001)};
+  \addplot[
+    ybar,
+    fill={iitblue},
+    draw=iitblue,
+  ] coordinates {(Spinfo,0.7479)};
+  \end{axis}
+  \end{tikzpicture}
+  \caption{Competition context for accuracy profile (impresso test). Grey: baselines; gold: Hansel\&Gretel runs (R1--R3); blue: top-3 systems. H\&G Run~3 (0.6221) substantially outperforms both baselines and ranks 13th out of 46 entries.}
+  \label{fig:competition}
+\end{figure}
+
+\subsection{Dev-to-Test Gap Analysis}
+\label{sec:gap}
+
+A substantial gap exists between our best internal dev score (S5: 0.7289) and our best official test score (Run 3/S9: 0.6221), approximately 17 points. We discuss the causes honestly:
+
+\begin{enumerate}
+  \item \textbf{Dev set size and overlap}: Our internal dev evaluation used 254 pairs from 21 documents --- a subset of the official dev split that was available at experiment time. This is a small, potentially non-representative sample. The official test set is larger and independently held-out, drawn from a different temporal and geographic distribution within the same newspaper collections.
+
+  \item \textbf{Fine-tuned model overfitting}: S5 and S7 were fine-tuned on 481 gold training documents. Although we applied gold/silver weighting to reduce overfitting risk, the training distribution likely exhibits specific document-level patterns (source newspaper style, annotation conventions) that the official test set does not replicate. Fine-tuned models are more sensitive to such distribution shifts.
+
+  \item \textbf{S9's robustness advantage}: Run 3 (S9, 0.6221) substantially outperforms Run 1 (S5, 0.5458) and Run 2 (S7, 0.5788) on the official test despite S5 having the best dev score. This reversal strongly suggests that the zero-shot GPT-OSS 120B model, with no exposure to HIPE training data, is more robust to the test distribution. Large-scale pre-training provides a more generalised factual and temporal knowledge base.
+
+  \item \textbf{PROBABLE class difficulty}: The \texttt{at=PROBABLE} class is systematically the hardest for all strategies (requiring implicit inference). Dev performance on PROBABLE may have been inflated by the small sample size; the test set likely has a more representative and challenging distribution of ambiguous cases.
+
+  \item \textbf{Wikidata coverage gaps}: The death-date hard rule in S5 and S9 fires only when Wikidata QIDs and biographical data are available. Coverage is lower for less prominent historical figures in the test set.
+\end{enumerate}
+
+The net lesson: \emph{dev scores estimated on 254 pairs are optimistic proxies for held-out test performance.} Robust evaluation requires larger dev sets with explicit distribution control. The strong generalization performance of S7 on the literary surprise test (rank 11) further confirms that architectural choices matter more than in-distribution dev scores for real-world generalisation.
+
+%%==========================================================================
+\section{Error Analysis}
+\label{sec:error}
+%%==========================================================================
+
+\subsection{Class-Level Hardness}
+
+Across all strategies, the \texttt{at=PROBABLE} class was consistently the hardest to classify. In S1 (dev split), \texttt{at} MR decomposed as: TRUE recall $\approx 0.72$, PROBABLE recall $\approx 0.18$, FALSE recall $\approx 0.67$. The PROBABLE class (9.6\% of labels) requires implicit inference from contextual cues --- a person's title, historical role, or proximity to a location --- rather than direct textual evidence. Models consistently under-predict PROBABLE, defaulting to the safer FALSE. This pattern held through S7: even the best performing strategies could not reliably recall the minority PROBABLE instances.
+
+\subsection{Per-Language Variation}
+
+On the official test (Run 3/S9), there is notable per-language variation (see Table~\ref{tab:official-lang}). German exhibits the lowest at-MR (0.4877) --- possibly due to heavier OCR noise in digitised German Gothic script (\textit{Fraktur}) and more complex syntactic structure for temporal reasoning. English achieves the best overall impresso score (0.6367), benefiting from richer pre-training signal in GPT-OSS 120B's training data for English historical newspapers. French is competitive (0.6303) with notably strong isAt-MR (0.7338).
+
+Across runs, the multilingual fine-tuned models (S5 Run~1, S7 Run~2) show different cross-language profiles: Run~2 (S7) leads on French (0.6243) while Run~1 (S5) leads on English (0.5976). This complementarity reinforces the value of ensemble approaches.
+
+\subsection{OCR Noise Examples}
+
+OCR noise in historical text produced systematic errors:
+\begin{itemize}
+  \item Character substitutions: ``Mufschen'' for ``M{\"u}nchen'', ``Preuﬁen'' for ``Preu{\ss}en''
+  \item Token splits: ``Kut zeroff'' for ``Kutzeroff'' (splitting names mid-word)
+  \item Language-level ambiguity: 19th-century mixed-language documents (French text referencing German places) confused language-conditioned routing in S3
+\end{itemize}
+While S9 (120B model) handles OCR noise more robustly via its larger parametric vocabulary, fine-tuned models in S5/S7 benefited from silver sandbox training data containing similar historical OCR patterns.
+
+%%==========================================================================
 \section{Limitations}
+\label{sec:limitations}
 %%==========================================================================
 
 \begin{enumerate}
-  \item \textbf{Data scarcity}: 104 gold documents across 3 languages and 3 label classes is the fundamental bottleneck. The binding constraint for fine-tuning approaches throughout.
+  \item \textbf{Data scarcity}: The 481 gold documents across 3 languages and 3 label classes is the fundamental bottleneck. The binding constraint for fine-tuning approaches throughout.
   \item \textbf{PROBABLE class}: Systematically the hardest label across all strategies. Its inherent ambiguity resists both discriminative and generative approaches.
   \item \textbf{Multilingual gradient interference}: Mixing archaic DE/FR/EN in tiny batches creates destructive gradient updates (demonstrated empirically in S2--S3).
   \item \textbf{Multi-agent latency}: S7 requires $\sim$30 min for 21 documents on 3 GPUs, making it operationally expensive at test-set scale.
-  \item \textbf{Wikidata gaps}: The death-date hard rule fires only when QIDs and biographical data are available — coverage is incomplete for many historical figures.
+  \item \textbf{Wikidata gaps}: The death-date hard rule fires only when QIDs and biographical data are available --- coverage is incomplete for many historical figures.
+  \item \textbf{Dev evaluation reliability}: With only 254 dev pairs, per-class recall estimates have high variance. Our dev scores should be treated as directional rather than precise.
 \end{enumerate}
 
 %%==========================================================================
 \section{Future Prospects}
+\label{sec:future}
 %%==========================================================================
 
 \begin{enumerate}
@@ -544,9 +749,12 @@ S9 extends S8 by dynamically injecting Wikidata facts into the prompt at inferen
 
 %%==========================================================================
 \section{Conclusion}
+\label{sec:conclusion}
 %%==========================================================================
 
-We presented Team Hansel \& Gretel's complete experimental journey through nine strategies for Person--Place Relation Extraction in multilingual historical documents. The central finding is that \textbf{temporal reasoning in historical text cannot be reliably solved by discriminative classifiers alone}: generative models producing reasoning chains before their final labels substantially outperform classification heads (+9.45 points), even with smaller parameter counts. The multi-agent decomposition further demonstrates that specialised temporal and spatial reasoning perspectives are especially effective for the temporally-constrained \texttt{isAt} sub-task. Our best system (S5, Global MR $= 0.7289$) and final submission (S9, Wikidata-augmented CoT via GPT-OSS 120B) represent complementary approaches: one optimised for accuracy, the other combining scale with structured knowledge injection.
+We presented Team Hansel\&Gretel's complete experimental journey through nine strategies for Person--Place Relation Extraction in multilingual historical documents. The central finding is that \textbf{temporal reasoning in historical text cannot be reliably solved by discriminative classifiers alone}: generative models producing reasoning chains before their final labels substantially outperform classification heads (+10.77 points on dev), even with smaller parameter counts. The multi-agent decomposition further demonstrates that specialised temporal and spatial reasoning perspectives are especially effective for the temporally-constrained \texttt{isAt} sub-task. Our best system (S5, dev Global MR $= 0.7289$) and best official submission (S9/Run~3, impresso score $= 0.6221$, rank 13/46) represent complementary approaches: one optimised for in-distribution accuracy, the other combining scale with structured knowledge injection for robustness to distribution shift.
+
+The 17-point dev-to-test gap is itself an important finding: small dev sets in low-resource settings produce optimistic performance proxies, and zero-shot large-model approaches may generalise better than fine-tuned smaller models when training data is scarce.
 
 \begin{acknowledgments}
 We sincerely thank the \textbf{HIPE-2026 organising team} --- Juri Opitz, Maud Ehrmann, Simon Clematide, Corina Racl\'{e}, Emanuela Boros, Andrianos Michail, and Matteo Romanello --- for the exceptional quality of the task design, data, and evaluation infrastructure. HIPE-2026 is organised within the framework of the Impresso -- Media Monitoring of the Past project (Swiss NSF grant No.~CRSII5\_213585; Luxembourg NRF grant No.~17498891). We also thank the \textbf{IBM Research RITS team} for API access to Llama 3.3 70B, Llama 4 Maverick, Granite 3.2 8B, and GPT-OSS 120B, which enabled Strategies 8 and 9.

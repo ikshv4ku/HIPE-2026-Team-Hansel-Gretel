@@ -24,6 +24,7 @@
 ├── results/                 # Published evaluation results
 ├── notebook-paper/          # Working notes paper
 │   └── CLEF2026-template/   # CEUR-WS LaTeX template
+├── LICENSE                  # MIT License
 └── README.md
 ```
 
@@ -73,6 +74,8 @@ Our final submitted runs were based on:
 - **Run 2 (Strategy 7):** Multi-agent fine-tuned Qwen2.5-7B-Instruct with 3 LoRA adapters (~7B params)
 - **Run 3 (Strategy 9):** Zero-training few-shot GPT-OSS 120B with Wikidata knowledge injection (~120B params)
 
+> **Dependencies:** Each strategy directory contains its own `requirements.txt` where applicable. Install per-strategy with `pip install -r ourWork/strategyN/requirements.txt`.
+
 ---
 
 ### 4. `submission/`
@@ -107,10 +110,11 @@ Final evaluation results as published by the organisers. **Our team is Team 9 (H
 
 ### 7. `notebook-paper/`
 
-Working notes paper for CLEF 2026, describing our system, experiments, and results.
+Working notes paper for CLEF 2026, describing our system, experiments, and results. See [`notebook-paper/README.md`](notebook-paper/README.md) for compilation instructions.
 
 - `hipe2026_ceurart.tex` — Our paper source (LaTeX).
-- `hipe2026_ceurart.pdf` — Compiled PDF.
+- `hipe2026_ceurart.pdf` — Compiled PDF (14 pages).
+- `ceurart.cls` — CEUR-WS document class (required to compile).
 - `references.bib` — Bibliography.
 - `guidelines.txt` — Paper writing guidelines from the organisers.
 
@@ -142,3 +146,9 @@ cat results/official_evaluation_report.txt
 ## Acknowledgements
 
 This work was carried out as part of the [HIPE-2026 Shared Task](https://hipe-eval.github.io/HIPE-2026/) at [CLEF 2026](https://clef2026.clef-initiative.eu/), organized by the Digital Humanities Lab (EPFL) and the Institute of Computational Linguistics (University of Zürich).
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

@@ -33,11 +33,11 @@ Strategies 1–4.5 use encoder-only models (XLM-RoBERTa, Qwen) with classificati
 
 ### `strategy5/scripts/`
 
-#### [NEW] [prepare_data.py](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/scripts/prepare_data.py)
+#### [NEW] [prepare_data.py](./scripts/prepare_data.py)
 
 Reuses the same gold/silver split logic from strategy4 (80/20 gold train/dev via seed=42). Outputs the same `HIPE-2026-v1.0-impresso-train-str4-all.jsonl` and `HIPE-2026-v1.0-impresso-dev-str4-all.jsonl` files (if not already built by strategy 4). Skips rebuilding if outputs already exist.
 
-#### [NEW] [dataset.py](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/scripts/dataset.py)
+#### [NEW] [dataset.py](./scripts/dataset.py)
 
 Converts JSONL pairs into **instruction-tuned prompt/completion pairs**:
 
@@ -64,7 +64,7 @@ Gold samples use **hard labels**. Silver samples use **soft labels** (label smoo
 
 Weight gold samples 5× higher via `sample_weight` in the loss mask.
 
-#### [NEW] [train.py](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/scripts/train.py)
+#### [NEW] [train.py](./scripts/train.py)
 
 - Loads `Qwen/Qwen2.5-3B-Instruct` in **bf16** (fits ~7GB, leaving 17GB for activations/batch)
 - Applies **LoRA** via `peft`: `r=16, alpha=32, target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"]`
@@ -74,7 +74,7 @@ Weight gold samples 5× higher via `sample_weight` in the loss mask.
 - Saves best checkpoint by global macro recall computed on dev set via greedy decode
 - Uses `accelerate` for single-GPU training (no need for multi-GPU)
 
-#### [NEW] [inference.py](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/scripts/inference.py)
+#### [NEW] [inference.py](./scripts/inference.py)
 
 - Loads base Qwen2.5-3B-Instruct + LoRA adapter
 - Generates the JSON answer with `max_new_tokens=20`, `temperature=0` (greedy)
@@ -83,7 +83,7 @@ Weight gold samples 5× higher via `sample_weight` in the loss mask.
 - **Wikidata hard rule** (optional, skip if QID is null): query `pers_wikidata_QID` death date; if person died >30 days before pub date → force `isAt=FALSE`. Uses a local cache to avoid re-querying.
 - Falls back to `FALSE/FALSE` for malformed outputs
 
-#### [NEW] [analyse_results.py](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/scripts/analyse_results.py)
+#### [NEW] [analyse_results.py](./scripts/analyse_results.py)
 
 Runs the official `HIPE-2026-data/scripts/file_scorer_evaluation.py` and prints per-language breakdown. Copied/adapted from strategy4_5.
 
@@ -91,7 +91,7 @@ Runs the official `HIPE-2026-data/scripts/file_scorer_evaluation.py` and prints 
 
 ### `strategy5/`
 
-#### [NEW] [run_training.sh](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/run_training.sh)
+#### [NEW] [run_training.sh](./run_training.sh)
 
 ```bash
 #!/bin/bash

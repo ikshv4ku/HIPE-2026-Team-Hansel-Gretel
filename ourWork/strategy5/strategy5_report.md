@@ -28,14 +28,14 @@ We have successfully transitioned from encoder-only classification to a **Genera
 
 ## 📂 Project Structure
 
-All files are located in [strategy5/](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5):
+All files are located in [strategy5/](./):
 
 | File | Description |
 | :--- | :--- |
-| [train.py](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/scripts/train.py) | LoRA fine-tuning loop with gradient checkpointing. |
-| [inference.py](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/scripts/inference.py) | Batch inference with merged LoRA and Wikidata rules. |
-| [dataset.py](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/scripts/dataset.py) | Instruction-tuned dataset with Qwen chat template. |
-| [results/analysis/evaluation_results.txt](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/results/analysis/evaluation_results.txt) | Final official scores. |
+| [train.py](./scripts/train.py) | LoRA fine-tuning loop with gradient checkpointing. |
+| [inference.py](./scripts/inference.py) | Batch inference with merged LoRA and Wikidata rules. |
+| [dataset.py](./scripts/dataset.py) | Instruction-tuned dataset with Qwen chat template. |
+| [results/analysis/evaluation_results.txt](./results/analysis/evaluation_results.txt) | Final official scores. |
 
 ## 🧠 Why Strategy 5 Achieved Better Results (+9.45 points)
 
@@ -70,6 +70,6 @@ Encoder models were restricted to **512 tokens**, often cutting off the publicat
 - Peak performance was reached at **Epoch 4**, after which the model began slightly over-fitting (slight dip in Epoch 5).
 
 ## 📂 Final Artifacts
-- **Model**: [strategy5/results/models/best_lora_adapter](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/results/models/best_lora_adapter)
-- **Predictions**: [strategy5/results/predictions/preds-dev-all.jsonl](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/results/predictions/preds-dev-all.jsonl)
-- **Official Scorer Output**: [evaluation_results.txt](file:///home/pradyuman/HIPE-2026-Team-Hansel-Gretel/strategy5/results/analysis/evaluation_results.txt)
+- **Model**: [strategy5/results/models/best_lora_adapter](./results/models/best_lora_adapter)
+- **Predictions**: [strategy5/results/predictions/preds-dev-all.jsonl](./results/predictions/preds-dev-all.jsonl)
+- **Official Scorer Output**: [evaluation_results.txt](./results/analysis/evaluation_results.txt)

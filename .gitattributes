@@ -1,0 +1,5 @@
+# Keep GitHub's language bar honest: the paper and its LaTeX template are documentation, not code.
+notebook-paper/** linguist-documentation
+*.tex linguist-documentation
+*.cls linguist-vendored
+*.bib linguist-documentation

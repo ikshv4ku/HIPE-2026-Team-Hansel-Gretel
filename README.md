@@ -8,6 +8,36 @@
 
 **Affiliation:** Department of Computer Science and Engineering, Indian Institute of Technology Roorkee
 
+📄 **Paper:** [CLEF 2026 working notes (PDF, 14 pp)](notebook-paper/hipe2026_ceurart.pdf) · **System description:** [PDF](submission/system_description.pdf) · **Official results:** [HIPE-2026 results](https://hipe-eval.github.io/HIPE-2026/results)
+
+---
+
+## At a glance
+
+- **11th of 46** submissions on the generalisation profile (Run 2, multi-agent Qwen2.5-7B), **13th of 46** on accuracy (Run 3, GPT-OSS-120B + Wikidata).
+- **9 measured strategies**: frozen encoders → LoRA multi-task → generative SFT → a three-agent specialist system → zero-training chain-of-thought with live knowledge-graph grounding. Global macro recall on our evaluation split went from 0.42 (random baseline) to 0.73 ([cross-strategy analysis](ourWork/strategy7/ANALYSIS.md)).
+- **Agent design, not just a bigger model.** Run 2 splits the reasoning across LoRA-tuned specialists and an arbiter; Run 3 grounds a 120B model in Wikidata facts fetched at inference time, with a cache and strict JSON validation of every answer.
+- **Built-in evaluation.** Strategies are scored against the official macro-recall metric with their own analyses, plus an LLM-as-judge script (`ourWork/strategy8/llmaj.py`, `ourWork/strategy9/llmaj.py`).
+
+### How the two strongest systems work
+
+```mermaid
+flowchart LR
+    subgraph R2["Run 2 · Multi-agent (Qwen2.5-7B + 3 LoRA adapters)"]
+        A[Article + person-place pair] --> H[Historian agent<br/>biography and time]
+        A --> G[Geographer agent<br/>space and region]
+        H --> ARB[Arbiter agent<br/>weighs both analyses]
+        G --> ARB
+        ARB --> O2[at / isAt labels]
+    end
+    subgraph R3["Run 3 · Zero-training CoT (GPT-OSS-120B)"]
+        B[Article + person-place pair] --> W[Wikidata SPARQL lookup<br/>person and place facts, cached]
+        W --> P[Few-shot chain-of-thought prompt<br/>with injected facts block]
+        P --> V[Parse and validate JSON<br/>normalise labels]
+        V --> O3[at / isAt labels]
+    end
+```
+
 ---
 
 ## Task Overview
